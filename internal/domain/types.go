@@ -1,4 +1,4 @@
-package task
+package domain
 
 import (
 	"github.com/robfig/cron/v3"
