@@ -27,25 +27,25 @@ func (s *cronJobService) AddJob(ctx context.Context, j domain.Task) error {
 }
 
 func (s *cronJobService) Preempt(ctx context.Context) ([]domain.Task, error) {
-	j, err := s.storage.Preempt(ctx)
-	if err != nil {
-		return []domain.Task{}, err
-	}
-	s.currentJob = j
-	ch := make(chan struct{})
-	go func() {
-		ticker := time.NewTicker(s.refreshInterval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ch:
-				// 退出续约循环
-				return
-			case <-ticker.C:
-				s.refresh(j.TaskId)
-			}
-		}
-	}()
+	//j, err := s.storage.Preempt(ctx)
+	//if err != nil {
+	//	return []domain.Task{}, err
+	//}
+	//s.currentJob = j
+	//ch := make(chan struct{})
+	//go func() {
+	//	ticker := time.NewTicker(s.refreshInterval)
+	//	defer ticker.Stop()
+	//	for {
+	//		select {
+	//		case <-ch:
+	//			// 退出续约循环
+	//			return
+	//		case <-ticker.C:
+	//			s.refresh(j.TaskId)
+	//		}
+	//	}
+	//}()
 	// 只能调用一次，也就是放弃续约。这时候要把状态还原回去
 	//s.currentJob.CancelFunc = func() {
 	//	close(ch)
@@ -58,7 +58,8 @@ func (s *cronJobService) Preempt(ctx context.Context) ([]domain.Task, error) {
 	//			logger.Int64("id", s.currentJob.Id))
 	//	}
 	//}
-	return s.currentJob, nil
+	//return s.currentJob, nil
+	return nil, nil
 }
 
 func (s *cronJobService) refresh(id int64) {

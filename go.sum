@@ -1,5 +1,7 @@
 github.com/alehua/ekit v0.0.0-20240326145755-571959128639 h1:KJdE1n00D6Bj0lxzKU5P/c7Up/cuph/EqfQbM0ZXm2E=
 github.com/alehua/ekit v0.0.0-20240326145755-571959128639/go.mod h1:Rtlp1Et9tH5S6jzn39qo+fYZRoj6FU7YH4oRq2oHHMg=
+github.com/bwmarrin/snowflake v0.3.0 h1:xm67bEhkKh6ij1790JB83OujPR5CzNe8QuQqAgISZN0=
+github.com/bwmarrin/snowflake v0.3.0/go.mod h1:NdZxfVWX+oR6y2K0o6qAYv6gIOP9rjG0/E9WsDpxqwE=
 github.com/jinzhu/inflection v1.0.0 h1:K317FqzuhWc8YvSVlFMCCUb36O/S9MCKRDI7QkRKD/E=
 github.com/jinzhu/inflection v1.0.0/go.mod h1:h+uFLlag+Qp1Va5pdKtLDYj+kHp5pxUVkryuEj+Srlc=
 github.com/jinzhu/now v1.1.5 h1:/o9tlHleP7gOFmsnYNz3RGnqzefHA47wQpKrrdTIwXQ=

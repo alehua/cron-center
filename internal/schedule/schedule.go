@@ -5,7 +5,7 @@ import (
 	"github.com/alehua/cron-center/internal"
 	"github.com/alehua/cron-center/internal/executor"
 	"github.com/alehua/cron-center/internal/storage"
-	"golang.org/x/sync/semaphore"
+	"github.com/bwmarrin/snowflake"
 	"log"
 	"time"
 )
@@ -13,15 +13,42 @@ import (
 // Scheduler 调度器
 type Scheduler struct {
 	executeId       int64
-	tasks           map[string]scheduledTask
+	tasks           chan scheduledTask
 	executors       map[string]executor.Executor
-	limiter         *semaphore.Weighted
 	preemptInterval time.Duration   // 抢占任务间隔
 	refreshInterval time.Duration   // 续约间隔
 	storage         storage.Storage // 存储接口
 
-	dbTimeout time.Duration   // 数据库查询超时时间
-	stop      <-chan struct{} // 停止信号
+	dbTimeout time.Duration // 数据库查询超时时间
+	stop      chan struct{} // 停止信号
+	stopFunc  func()
+}
+
+func NewScheduler(
+	preemptInterval time.Duration,
+	refreshInterval time.Duration,
+	storage storage.Storage,
+	dbTimeout time.Duration,
+	maxTaskLen int8) *Scheduler {
+	node, err := snowflake.NewNode(1)
+	if err != nil {
+		panic(err)
+	}
+	executeId := node.Generate().Int64()
+	s := &Scheduler{
+		executeId:       executeId,
+		tasks:           make(chan scheduledTask, maxTaskLen),
+		executors:       make(map[string]executor.Executor),
+		preemptInterval: preemptInterval,
+		refreshInterval: refreshInterval,
+		storage:         storage,
+		dbTimeout:       dbTimeout,
+		stop:            make(chan struct{}),
+	}
+	s.stopFunc = func() {
+		close(s.tasks)
+	}
+	return s
 }
 
 type scheduledTask struct {
@@ -31,26 +58,22 @@ type scheduledTask struct {
 	stopped   bool
 }
 
-//func (s *Scheduler) RegisterJob(ctx context.Context, j CronJob) error {
-//	return s.svc.AddJob(ctx, j)
-//}
-
 func (s *Scheduler) RegisterExecutor(exec executor.Executor) {
 	s.executors[exec.Name()] = exec
 }
 
 // Start 开始调度。当被取消，或者超时的时候，就会结束调度
 func (s *Scheduler) Start(ctx context.Context) error {
+	// 启动任务执行
+	go s.execute(ctx)
+	// 启动续约
+	go s.refresh(ctx)
 	// 抢占任务间隔
 	tickerP := time.NewTicker(s.preemptInterval)
 	defer tickerP.Stop()
 	for {
 		if ctx.Err() != nil {
 			return ctx.Err()
-		}
-		err := s.limiter.Acquire(ctx, 1)
-		if err != nil {
-			return err
 		}
 		select {
 		case <-tickerP.C:
@@ -64,6 +87,30 @@ func (s *Scheduler) Start(ctx context.Context) error {
 	}
 }
 
+func (s *Scheduler) execute(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			log.Printf("cron-center: scheduler[%d] 停止任务执行", s.executeId)
+			return
+		default:
+		}
+		task, ok := <-s.tasks
+		if !ok {
+			// 通道关闭，退出
+			break
+		}
+		go func(t scheduledTask) {
+			// 执行任务
+			log.Printf("cron-center: scheduler[%d] 开始执行任务%s", s.executeId, t.task.Name)
+			err := t.executor.Exec(ctx, *t.task)
+			if err != nil {
+				log.Printf("cron-center: scheduler[%d] 执行任务失败：%s", s.executeId, err)
+			}
+		}(task)
+	}
+}
+
 func (s *Scheduler) preempted() {
 	ctx, cancel := context.WithTimeout(context.Background(), s.dbTimeout)
 	// 抢占任务
@@ -74,18 +121,17 @@ func (s *Scheduler) preempted() {
 		return
 	}
 	for _, task := range tasks {
-		if _, ok := s.tasks[task.Id]; !ok {
-			s.addTask(ctx, task)
-		} else {
-			log.Printf("cron-center: scheduler[%d] 任务%s已经存在，跳过", s.executeId, task.Id)
+		s.tasks <- scheduledTask{
+			task:      task,
+			executeId: s.executeId,
+			executor:  s.executors[task.Type],
 		}
 	}
 	cancel()
-
 }
 
 // Refresh 刷新任务, 自动续约
-func (s *Scheduler) Refresh(ctx context.Context) {
+func (s *Scheduler) refresh(ctx context.Context) {
 	timer := time.NewTicker(s.refreshInterval)
 	defer timer.Stop()
 	for {

@@ -69,49 +69,45 @@ func (dao *GORMTaskDAO) UpdateUtime(ctx context.Context, id int64) (int64, error
 	}).Error
 }
 
+// Preempt 执行一次抢占
 func (dao *GORMTaskDAO) Preempt(ctx context.Context) ([]Task, error) {
 	db := dao.db.WithContext(ctx)
 	var tasks []Task
-	for {
-		// 每一个循环都重新计算 time.Now
-		now := time.Now()
-		var tmp []Task
-		// GORM 多条件查询
-		// 条件1: 下一次执行时间小于当前时间，并且状态是等待中
-		cond1 := db.Where("next_time <= ? AND status = ?", now, TaskStatusWaiting)
-		// 条件2: 状态是运行态 (某一次续约失败，utime没有变)
-		// 10分钟内没有抢到, 认为任务已经过期
-		const threshold = 10 * time.Minute
-		ddl := now.Add(-1 * threshold).UnixMilli()
-		cond2 := db.Where("utime <= ? AND status = ?", ddl, TaskStatusRunning)
-		// 条件3: 当前任务拥有者主动放弃, 状态是TaskStatusDone
-		cond3 := db.Where("status = ? AND executor = ?", TaskStatusDone, dao.storageId)
+	// 每一个循环都重新计算 time.Now
+	now := time.Now()
+	var tmp []Task
+	// GORM 多条件查询
+	// 条件1: 下一次执行时间小于当前时间，并且状态是等待中
+	cond1 := db.Where("next_time <= ? AND status = ?", now, TaskStatusWaiting)
+	// 条件2: 状态是运行态 (某一次续约失败，utime没有变)
+	// 10分钟内没有抢到, 认为任务已经过期
+	const threshold = 10 * time.Minute
+	ddl := now.Add(-1 * threshold).UnixMilli()
+	cond2 := db.Where("utime <= ? AND status = ?", ddl, TaskStatusRunning)
+	// 条件3: 当前任务拥有者主动放弃, 状态是TaskStatusDone
+	cond3 := db.Where("status = ? AND executor = ?", TaskStatusDone, dao.storageId)
 
-		err := db.Model(&Task{}).Where(cond1.Or(cond2).Or(cond3)).Find(&tmp).Error
-		if err != nil {
-			// 数据库有问题
-			return tasks, err
+	err := db.Model(&Task{}).Where(cond1.Or(cond2).Or(cond3)).Find(&tmp).Error
+	if err != nil {
+		// 数据库有问题
+		return tasks, err
+	}
+	// 开始抢占, 通过version来保证原子性 upsert语义
+	for _, item := range tmp {
+		res := db.Model(&Task{}).
+			Where("id = ? AND version = ?", item.Id, item.Version).
+			Updates(map[string]any{
+				"utime":   now.UnixMilli(),
+				"version": item.Version + 1,
+				"status":  TaskStatusRunning,
+			})
+		if res.Error != nil {
+			continue
+			// 数据库错误, 记录日志, 继续下一个
 		}
-		// 开始抢占, 通过version来保证原子性 upsert语义
-		for _, item := range tmp {
-			res := db.Model(&Task{}).
-				Where("id = ? AND version = ?", item.Id, item.Version).
-				Updates(map[string]any{
-					"utime":   now.UnixMilli(),
-					"version": item.Version + 1,
-					"status":  TaskStatusRunning,
-				})
-			if res.Error != nil {
-				continue
-				// 数据库错误, 记录日志, 继续下一个
-			}
-			// 抢占成功
-			if res.RowsAffected == 1 {
-				tasks = append(tasks, item)
-			}
-		}
-		if len(tasks) > 0 {
-			break
+		// 抢占成功
+		if res.RowsAffected == 1 {
+			tasks = append(tasks, item)
 		}
 	}
 	return tasks, nil

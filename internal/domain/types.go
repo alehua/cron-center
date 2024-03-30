@@ -27,7 +27,7 @@ const (
 type Config struct {
 	Name       string
 	Cron       string
-	Cmd        string
+	Type       string
 	Parameters string
 }
 
