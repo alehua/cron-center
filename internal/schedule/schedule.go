@@ -67,7 +67,7 @@ func (s *Scheduler) Start(ctx context.Context) error {
 	// 启动任务执行
 	go s.execute(ctx)
 	// 启动续约
-	go s.refresh(ctx)
+	go s.refresh()
 	// 抢占任务间隔
 	tickerP := time.NewTicker(s.preemptInterval)
 	defer tickerP.Stop()
@@ -107,6 +107,8 @@ func (s *Scheduler) execute(ctx context.Context) {
 			if err != nil {
 				log.Printf("cron-center: scheduler[%d] 执行任务失败：%s", s.executeId, err)
 			}
+			// 任务执行结束，更新状态 更新下一次执行时间
+			t.task.NextTime = t.task.Next(time.Now())
 		}(task)
 	}
 }
@@ -122,16 +124,16 @@ func (s *Scheduler) preempted() {
 	}
 	for _, task := range tasks {
 		s.tasks <- scheduledTask{
-			task:      task,
+			task:      &task,
 			executeId: s.executeId,
-			executor:  s.executors[task.Type],
+			executor:  s.executors[string(task.Type)],
 		}
 	}
 	cancel()
 }
 
 // Refresh 刷新任务, 自动续约
-func (s *Scheduler) refresh(ctx context.Context) {
+func (s *Scheduler) refresh() {
 	timer := time.NewTicker(s.refreshInterval)
 	defer timer.Stop()
 	for {
@@ -146,8 +148,8 @@ func (s *Scheduler) refresh(ctx context.Context) {
 			//	go s.refresh(ctx, t.Id, t.Epoch, t.CandidateId)
 			//}
 		case <-s.stop:
-			//log.Printf("ecron: storage[%d]关闭，停止所有task的自动续约", s.storageId)
-			//return
+			log.Printf("cron-center: storage[%d]关闭，停止所有task的自动续约", s.executeId)
+			return
 		}
 	}
 }

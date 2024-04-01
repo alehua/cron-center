@@ -1,0 +1,21 @@
+version: "3"
+services:
+  mysql8:
+    image: mysql:8.0
+    restart: always
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      #      - 初始化脚本
+      - ./script/mysql/:/docker-entrypoint-initdb.d/
+    ports:
+      #      - 外部访问用 13316
+      - 13316:3306
+
+  etcd:
+    image: 'bitnami/etcd:3.5'
+    environment:
+      - ALLOW_NONE_AUTHENTICATION=yes
+    ports:
+      - 12379:2379
