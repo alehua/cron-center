@@ -22,14 +22,12 @@ type TaskDAO interface {
 	// Preempt 抢占任务
 	Preempt(ctx context.Context) ([]Task, error)
 	UpdateNextTime(ctx context.Context, id int64, t time.Time) error
-	UpdateUtime(ctx context.Context, id int64) (int64, error)
+	UpdateUtime(ctx context.Context, id int64) error
 	// Release 释放一个任务
 	Release(ctx context.Context, id, utime int64) error
 	// Insert 插入一个任务
 	Insert(ctx context.Context, j Task) error
 }
-
-var ErrNoMoreTask = gorm.ErrRecordNotFound
 
 type GORMTaskDAO struct {
 	db        *gorm.DB
@@ -43,8 +41,8 @@ func (dao *GORMTaskDAO) Insert(ctx context.Context, j Task) error {
 	return dao.db.WithContext(ctx).Create(&j).Error
 }
 
-func NewGORMTaskDAO(db *gorm.DB) TaskDAO {
-	return &GORMTaskDAO{db: db}
+func NewGORMTaskDAO(db *gorm.DB, storageId int64) TaskDAO {
+	return &GORMTaskDAO{db: db, storageId: storageId}
 }
 
 func (dao *GORMTaskDAO) Release(ctx context.Context, id, utime int64) error {
@@ -61,9 +59,9 @@ func (dao *GORMTaskDAO) Release(ctx context.Context, id, utime int64) error {
 	return res.Error
 }
 
-func (dao *GORMTaskDAO) UpdateUtime(ctx context.Context, id int64) (int64, error) {
+func (dao *GORMTaskDAO) UpdateUtime(ctx context.Context, id int64) error {
 	now := time.Now().UnixMilli()
-	return now, dao.db.WithContext(ctx).Model(&Task{}).
+	return dao.db.WithContext(ctx).Model(&Task{}).
 		Where("id=?", id).Updates(map[string]any{
 		"utime": now,
 	}).Error

@@ -12,7 +12,7 @@ type Storage interface {
 	// Preempt 抢占一个任务
 	Preempt(ctx context.Context) ([]internal.Task, error)
 	UpdateNextTime(ctx context.Context, id int64, t time.Time) error
-	UpdateUtime(ctx context.Context, id int64) (int64, error)
+	UpdateUtime(ctx context.Context, id int64) error
 	// Release 释放一个任务
 	Release(ctx context.Context, id, utime int64) error
 	// Insert 插入一个任务
@@ -20,7 +20,11 @@ type Storage interface {
 }
 
 type TaskStorage struct {
-	dao dao.GORMTaskDAO
+	dao dao.TaskDAO
+}
+
+func NewTaskStorage(dao dao.TaskDAO) *TaskStorage {
+	return &TaskStorage{dao: dao}
 }
 
 func (ts *TaskStorage) Preempt(ctx context.Context) ([]internal.Task, error) {
@@ -37,7 +41,7 @@ func (ts *TaskStorage) UpdateNextTime(ctx context.Context, id int64, t time.Time
 	return ts.dao.UpdateNextTime(ctx, id, t)
 }
 
-func (ts *TaskStorage) UpdateUtime(ctx context.Context, id int64) (int64, error) {
+func (ts *TaskStorage) UpdateUtime(ctx context.Context, id int64) error {
 	return ts.dao.UpdateUtime(ctx, id)
 }
 
@@ -56,7 +60,7 @@ func (ts *TaskStorage) ToEntity(t internal.Task) dao.Task {
 		Cmd:        t.Cmd,
 		Parameters: t.Parameters,
 		Id:         t.TaskId,
-		NextTime:   t.NextTime,
+		NextTime:   t.NextTime.UnixMilli(),
 		Status:     t.Status,
 		Version:    t.Version,
 	}
@@ -72,12 +76,8 @@ func (ts *TaskStorage) ToInternal(t dao.Task) internal.Task {
 	return internal.Task{
 		Config:   config,
 		TaskId:   t.Id,
-		NextTime: t.NextTime,
+		NextTime: time.UnixMilli(t.NextTime),
 		Status:   t.Status,
 		Version:  t.Version,
 	}
-
 }
-
-//Events(ctx context.Context, taskEvents <-chan internal.Event) (<-chan Event, error)
-//JobDAO
