@@ -1,5 +1,7 @@
 github.com/alehua/ekit v0.0.0-20240326145755-571959128639 h1:KJdE1n00D6Bj0lxzKU5P/c7Up/cuph/EqfQbM0ZXm2E=
 github.com/alehua/ekit v0.0.0-20240326145755-571959128639/go.mod h1:Rtlp1Et9tH5S6jzn39qo+fYZRoj6FU7YH4oRq2oHHMg=
+github.com/alehua/ekit v0.0.0-20240405153112-397689d394f3 h1:6WE+TnCUnlpg48uGWhrNA1E1RDmPUOnAnN+SgCz/W5c=
+github.com/alehua/ekit v0.0.0-20240405153112-397689d394f3/go.mod h1:Rtlp1Et9tH5S6jzn39qo+fYZRoj6FU7YH4oRq2oHHMg=
 github.com/bwmarrin/snowflake v0.3.0 h1:xm67bEhkKh6ij1790JB83OujPR5CzNe8QuQqAgISZN0=
 github.com/bwmarrin/snowflake v0.3.0/go.mod h1:NdZxfVWX+oR6y2K0o6qAYv6gIOP9rjG0/E9WsDpxqwE=
 github.com/go-sql-driver/mysql v1.7.0 h1:ueSltNNllEqE3qcWBTD0iQd3IpL/6U+mJxLkazJ7YPc=

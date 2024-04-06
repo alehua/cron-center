@@ -1,23 +1,23 @@
-package internal
+package task
 
 import (
 	"github.com/robfig/cron/v3"
 	"time"
 )
 
-type TaskType string
-
 const (
-	TypeHTTP   = "http_task"
-	TypePython = "python_task"
-	TypeShell  = "shell_task"
-	TypeLocal  = "local_task"
+	EventTypeRunning = "running"
+	// EventTypeFailed 任务运行失败
+	EventTypeFailed = "failed"
+	// EventTypeSuccess 任务运行成功
+	EventTypeSuccess = "success"
+	EventTypeInit    = "init"
 )
 
 type Config struct {
 	Name       string
 	Cron       string
-	Type       TaskType
+	Type       string
 	Cmd        string
 	Parameters string
 	MaxTime    time.Duration // 任务的最大执行时间
@@ -40,4 +40,9 @@ func (task *Task) Next(t time.Time) time.Time {
 		cron.Descriptor)
 	s, _ := expr.Parse(task.Cron)
 	return s.Next(t)
+}
+
+type Event struct {
+	Task
+	Type string
 }

@@ -2,82 +2,50 @@ package storage
 
 import (
 	"context"
-	"github.com/alehua/cron-center/internal"
-	"github.com/alehua/cron-center/internal/storage/dao"
-	"github.com/alehua/ekit/slice"
-	"time"
+	"github.com/alehua/cron-center/internal/task"
 )
 
-type Storage interface {
-	// Preempt 抢占一个任务
-	Preempt(ctx context.Context) ([]internal.Task, error)
-	UpdateNextTime(ctx context.Context, id int64, t time.Time) error
-	UpdateUtime(ctx context.Context, id int64) error
-	// Release 释放一个任务
-	Release(ctx context.Context, id, utime int64) error
-	// Insert 插入一个任务
-	Insert(ctx context.Context, t internal.Task) error
+const (
+	// EventTypePreempted 抢占了一个任务
+	EventTypePreempted = "preempted"
+	// EventTypeDeleted 某一个任务被删除了
+	EventTypeDeleted   = "deleted"
+	EventTypeCreated   = "created"
+	EventTypeRunnable  = "runnable"
+	EventTypeEnd       = "end"
+	EventTypeDiscarded = "discarded"
+
+	Stop = "stop"
+)
+
+type Storager interface {
+	// Events
+	// ctx 结束的时候，Storage 也要结束
+	// 实现者需要处理 taskEvents
+	Events(ctx context.Context, taskEvents <-chan task.Event) (<-chan Event, error)
+	TaskDAO
 }
 
-type TaskStorage struct {
-	dao dao.TaskDAO
+type TaskDAO interface {
+	Get(ctx context.Context, taskId int64) (*task.Task, error)
+	Add(ctx context.Context, t *task.Task) (int64, error)
+	AddExecution(ctx context.Context, taskId int64) (int64, error)
+	Update(ctx context.Context, t *task.Task) error
+	CompareAndUpdateTaskStatus(ctx context.Context, taskId int64, old, new string) error
+	CompareAndUpdateTaskExecutionStatus(ctx context.Context, taskId int64, old, new string) error
+	Delete(ctx context.Context, taskId int64) error
 }
 
-func NewTaskStorage(dao dao.TaskDAO) *TaskStorage {
-	return &TaskStorage{dao: dao}
+type Status struct {
+	ExpectStatus string
+	UseStatus    string
 }
 
-func (ts *TaskStorage) Preempt(ctx context.Context) ([]internal.Task, error) {
-	data, err := ts.dao.Preempt(ctx)
-	if err != nil {
-		return []internal.Task{}, err
-	}
-	return slice.Map[dao.Task, internal.Task](data, func(idx int, src dao.Task) internal.Task {
-		return ts.ToInternal(src)
-	}), err
+type Event struct {
+	Type string
+	Task *task.Task
 }
 
-func (ts *TaskStorage) UpdateNextTime(ctx context.Context, id int64, t time.Time) error {
-	return ts.dao.UpdateNextTime(ctx, id, t)
-}
+func (e *Event) Notify() {
 
-func (ts *TaskStorage) UpdateUtime(ctx context.Context, id int64) error {
-	return ts.dao.UpdateUtime(ctx, id)
-}
-
-func (ts *TaskStorage) Release(ctx context.Context, id, utime int64) error {
-	return ts.dao.Release(ctx, id, utime)
-}
-
-func (ts *TaskStorage) Insert(ctx context.Context, t internal.Task) error {
-	return ts.dao.Insert(ctx, ts.ToEntity(t))
-}
-
-func (ts *TaskStorage) ToEntity(t internal.Task) dao.Task {
-	return dao.Task{
-		Name:       t.Name,
-		Cron:       t.Cron,
-		Cmd:        t.Cmd,
-		Parameters: t.Parameters,
-		Id:         t.TaskId,
-		NextTime:   t.NextTime.UnixMilli(),
-		Status:     t.Status,
-		Version:    t.Version,
-	}
-}
-
-func (ts *TaskStorage) ToInternal(t dao.Task) internal.Task {
-	config := internal.Config{
-		Name:       t.Name,
-		Cron:       t.Cron,
-		Cmd:        t.Cmd,
-		Parameters: t.Parameters,
-	}
-	return internal.Task{
-		Config:   config,
-		TaskId:   t.Id,
-		NextTime: time.UnixMilli(t.NextTime),
-		Status:   t.Status,
-		Version:  t.Version,
-	}
 }

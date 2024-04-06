@@ -3,7 +3,7 @@ module github.com/alehua/cron-center
 go 1.22.1
 
 require (
-	github.com/alehua/ekit v0.0.0-20240326145755-571959128639 // indirect
+	github.com/alehua/ekit v0.0.0-20240405153112-397689d394f3 // indirect
 	github.com/bwmarrin/snowflake v0.3.0 // indirect
 	github.com/go-sql-driver/mysql v1.7.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
