@@ -15,12 +15,10 @@ const (
 )
 
 type Config struct {
-	Name       string
-	Cron       string
-	Type       string
-	Cmd        string
-	Parameters string
-	MaxTime    time.Duration // 任务的最大执行时间
+	Name    string
+	Cron    string
+	Type    string
+	MaxTime time.Duration // 任务的最大执行时间
 }
 
 // Task 任务的执行信息

@@ -5,13 +5,13 @@ import (
 	"github.com/alehua/cron-center/internal/task"
 )
 
-type ExecType int
+type ExecType string
 
 const (
-	GoExecutorType ExecType = iota
-	PythonExecutorType
-	ShellExecutorType
-	HttpExecutorType
+	GoExecutorType     ExecType = "local"
+	PythonExecutorType          = "python"
+	ShellExecutorType           = "shell"
+	HttpExecutorType            = "http"
 )
 
 // Executor 执行器抽象

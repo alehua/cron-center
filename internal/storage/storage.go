@@ -1,8 +1,8 @@
-package dao
+package storage
 
 import (
 	"context"
-	"github.com/alehua/cron-center/internal/storage"
+	"errors"
 	"github.com/alehua/cron-center/internal/task"
 	"gorm.io/gorm"
 	"log"
@@ -26,29 +26,42 @@ type TaskInfo struct {
 	Cron            string
 	Type            string
 	InstanceId      int32
+	MaxExecTime     int32
 	Config          string
 	CreateTime      int64
 	UpdateTime      int64
 }
 
-type TaskInfoDAO struct {
+type TaskExecution struct {
+	Id            int64 `gorm:"auto_increment,primary_key"`
+	TaskId        int64
+	ExecuteStatus string
+	CreateTime    int64
+	UpdateTime    int64
+}
+
+// ******** 初始化方法 **********
+
+type TaskInfoStorage struct {
 	db              *gorm.DB
 	refreshInterval time.Duration // 续约间隔
 	preemptInterval time.Duration // 抢占间隔
 	instanceId      int32
 	limit           int
+	events          chan Event
 	stop            chan struct{}
 }
 
-type Option func(t *TaskInfoDAO)
+type Option func(t *TaskInfoStorage)
 
-func NewTaskInfoDAO(db *gorm.DB, id int32, opts ...Option) *TaskInfoDAO {
-	dao := &TaskInfoDAO{
+func NewTaskStorage(db *gorm.DB, id int32, opts ...Option) Storager {
+	dao := &TaskInfoStorage{
 		db:              db,
 		instanceId:      id,
 		limit:           10,
 		refreshInterval: 5 * time.Second,
 		preemptInterval: 10 * time.Second,
+		events:          make(chan Event),
 		stop:            make(chan struct{}),
 	}
 	for _, opt := range opts {
@@ -58,41 +71,83 @@ func NewTaskInfoDAO(db *gorm.DB, id int32, opts ...Option) *TaskInfoDAO {
 }
 
 func WithPreemptInterval(t time.Duration) Option {
-	return func(dao *TaskInfoDAO) {
+	return func(dao *TaskInfoStorage) {
 		dao.preemptInterval = t
 	}
 }
 
 func WithRefreshLimit(limit int) Option {
-	return func(dao *TaskInfoDAO) {
+	return func(dao *TaskInfoStorage) {
 		dao.limit = limit
 	}
 }
 
 func WithRefreshInterval(t time.Duration) Option {
-	return func(dao *TaskInfoDAO) {
+	return func(dao *TaskInfoStorage) {
 		dao.refreshInterval = t
 	}
 }
 
-func (dao *TaskInfoDAO) Get(ctx context.Context, id int64) (TaskInfo, error) {
-	var task TaskInfo
-	err := dao.db.WithContext(ctx).Where("id = ?", id).First(&task).Error
-	if err != nil {
-		return TaskInfo{}, err
+// ************** 接口的实现 ***********
+
+func (dao *TaskInfoStorage) Events(ctx context.Context, taskEvents <-chan task.Event) <-chan Event {
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+			case event := <-taskEvents:
+				switch event.Type {
+				case task.EventTypeRunning:
+					log.Println("storage 收到 task执行中信号")
+					_ = dao.UpdateTaskStatus(ctx, event.TaskId, EventTypePreempted, EventTypeRunning)
+				case task.EventTypeSuccess:
+					_ = dao.UpdateTaskStatus(ctx, event.TaskId, EventTypePreempted, EventTypeSuccess)
+				case task.EventTypeFailed:
+					_ = dao.UpdateTaskStatus(ctx, event.TaskId, EventTypePreempted, EventTypeFail)
+				}
+			}
+		}
+	}()
+	return dao.events
+}
+
+// UpdateTaskStatus 更新任务状态
+func (dao *TaskInfoStorage) UpdateTaskStatus(ctx context.Context, taskId int64, old, new string) error {
+	res := dao.db.WithContext(ctx).Model(&TaskExecution{}).
+		Where("id = ? AND execute_status = ?", taskId, old).
+		Updates(map[string]any{
+			"update_time":    time.Now().UnixMilli(),
+			"execute_status": new,
+		})
+	if res.Error != nil {
+		return res.Error
 	}
-	return task, nil
+	if res.RowsAffected != 1 {
+		return errors.New("任务状态不对")
+	}
+	return nil
 }
 
-func (dao *TaskInfoDAO) Insert(ctx context.Context, t TaskInfo) error {
+func (dao *TaskInfoStorage) Get(ctx context.Context, id int64) (*task.Task, error) {
+	var info TaskInfo
+	err := dao.db.WithContext(ctx).Model(&TaskInfo{}).
+		Where("id = ?", id).First(&info).Error
+	if err != nil {
+		return &task.Task{}, err
+	}
+	return dao.toTask(info), nil
+}
+
+func (dao *TaskInfoStorage) Insert(ctx context.Context, t *task.Task) error {
+	info := dao.toTaskInfo(t)
 	now := time.Now().UnixMilli()
-	t.CreateTime = now
-	t.UpdateTime = now
-	t.SchedulerStatus = storage.EventTypeCreated
-	return dao.db.WithContext(ctx).Create(&t).Error
+	info.CreateTime = now
+	info.UpdateTime = now
+	info.SchedulerStatus = EventTypeCreated
+	return dao.db.WithContext(ctx).Create(&info).Error
 }
 
-func (dao *TaskInfoDAO) Preempt(ctx context.Context) {
+func (dao *TaskInfoStorage) Preempt(ctx context.Context) {
 	// 抢占任务间隔
 	tickerP := time.NewTicker(dao.preemptInterval)
 	defer tickerP.Stop()
@@ -103,18 +158,17 @@ func (dao *TaskInfoDAO) Preempt(ctx context.Context) {
 				tasks, err := dao.preempted(ctx)
 				if err != nil {
 					log.Printf("preempted error: %v", err) // 这里要报警
-					return
 				}
 				for _, item := range tasks {
 					// 通知调度器
-					preemptedEvent := storage.Event{
-						Type: storage.EventTypePreempted,
+					preemptedEvent := Event{
+						Type: EventTypePreempted,
 						Task: &task.Task{
-							Config: task.Config{Name: item.Name, Cron: item.Cron, Type: item.Type, Parameters: item.Config},
+							Config: task.Config{Name: item.Name, Cron: item.Cron, Type: item.Type},
 							TaskId: item.Id,
 						},
 					}
-					preemptedEvent.Notify()
+					dao.events <- preemptedEvent
 				}
 			}()
 		case <-dao.stop:
@@ -125,7 +179,7 @@ func (dao *TaskInfoDAO) Preempt(ctx context.Context) {
 }
 
 // Preempt 执行一次抢占
-func (dao *TaskInfoDAO) preempted(ctx context.Context) ([]TaskInfo, error) {
+func (dao *TaskInfoStorage) preempted(ctx context.Context) ([]TaskInfo, error) {
 	db := dao.db.WithContext(ctx)
 	var TaskInfos []TaskInfo
 	// 每一个循环都重新计算 time.Now
@@ -168,7 +222,7 @@ func (dao *TaskInfoDAO) preempted(ctx context.Context) ([]TaskInfo, error) {
 }
 
 // AutoRefresh 自动续约
-func (dao *TaskInfoDAO) AutoRefresh(ctx context.Context) {
+func (dao *TaskInfoStorage) AutoRefresh(ctx context.Context) {
 	// 续约任务间隔
 	timer := time.NewTicker(dao.refreshInterval)
 	defer timer.Stop()
@@ -178,7 +232,7 @@ func (dao *TaskInfoDAO) AutoRefresh(ctx context.Context) {
 			var tasks []TaskInfo
 			err := dao.db.WithContext(ctx).Model(&TaskInfo{}).
 				Where("SchedulerStatus = ? AND instance_id = ?",
-					storage.EventTypePreempted, dao.instanceId).
+					EventTypePreempted, dao.instanceId).
 				Find(&tasks).Error
 			if err != nil {
 				log.Printf("cron: storage[%d]自动续约失败，%v", dao.instanceId, err)
@@ -194,7 +248,7 @@ func (dao *TaskInfoDAO) AutoRefresh(ctx context.Context) {
 	}
 }
 
-func (dao *TaskInfoDAO) refresh(ctx context.Context, id int64) {
+func (dao *TaskInfoStorage) refresh(ctx context.Context, id int64) {
 	now := time.Now().UnixMilli()
 	err := dao.db.WithContext(ctx).Model(&TaskInfo{}).
 		Where("id=?", id).Updates(map[string]any{
@@ -206,7 +260,7 @@ func (dao *TaskInfoDAO) refresh(ctx context.Context, id int64) {
 	// 根据error判断是否需要重新重试
 }
 
-func (dao *TaskInfoDAO) Release(ctx context.Context, id int64) error {
+func (dao *TaskInfoStorage) Release(ctx context.Context, id int64) error {
 	// 释放是的时候判断是否自己抢占的, 确保更新时间和自己强制时候一致
 	res := dao.db.WithContext(ctx).Model(&TaskInfo{}).
 		Where("id = ? AND instance_id = ?", id, dao.instanceId).Updates(map[string]any{
@@ -218,4 +272,38 @@ func (dao *TaskInfoDAO) Release(ctx context.Context, id int64) error {
 		return nil
 	}
 	return res.Error
+}
+
+// AddExecution 创建一条执行记录
+func (dao *TaskInfoStorage) AddExecution(ctx context.Context, taskId int64) error {
+	var t = TaskExecution{
+		TaskId:        taskId,
+		ExecuteStatus: task.EventTypeInit,
+		CreateTime:    time.Now().Unix(),
+		UpdateTime:    time.Now().Unix(),
+	}
+	return dao.db.WithContext(ctx).Model(&TaskExecution{}).Create(&t).Error
+}
+
+func (dao *TaskInfoStorage) toTask(info TaskInfo) *task.Task {
+	return &task.Task{
+		Config: task.Config{
+			Name:    info.Name,
+			Cron:    info.Cron,
+			Type:    info.Type,
+			MaxTime: time.Duration(info.MaxExecTime),
+		},
+		TaskId:  info.Id,
+		Version: info.Version,
+	}
+}
+
+func (dao *TaskInfoStorage) toTaskInfo(t *task.Task) *TaskInfo {
+	return &TaskInfo{
+		Name:        t.Name,
+		Version:     t.Version,
+		Cron:        t.Cron,
+		Type:        t.Cron,
+		MaxExecTime: int32(t.MaxTime.Seconds()),
+	}
 }
