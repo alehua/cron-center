@@ -3,10 +3,11 @@ package storage
 import (
 	"context"
 	"errors"
-	"github.com/alehua/cron-center/internal/task"
 	"gorm.io/gorm"
 	"log"
 	"time"
+
+	"github.com/alehua/cron-center/internal/task"
 )
 
 const (
@@ -164,7 +165,8 @@ func (dao *TaskInfoStorage) Preempt(ctx context.Context) {
 					preemptedEvent := Event{
 						Type: EventTypePreempted,
 						Task: &task.Task{
-							Config: task.Config{Name: item.Name, Cron: item.Cron, Type: item.Type},
+							Config: task.Config{Name: item.Name, Cron: item.Cron,
+								Type: item.Type, MaxTime: time.Duration(item.MaxExecTime)},
 							TaskId: item.Id,
 						},
 					}

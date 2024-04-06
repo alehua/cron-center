@@ -5,7 +5,7 @@ import (
 	"github.com/alehua/cron-center/internal/executor"
 	"github.com/alehua/cron-center/internal/storage"
 	"github.com/alehua/cron-center/internal/task"
-	"github.com/alehua/ekit/queue"
+	"github.com/ecodeclub/ekit/queue"
 	"log"
 	"sync"
 	"time"
@@ -17,7 +17,7 @@ func NewScheduler(s storage.Storager) *Scheduler {
 		tasks:      make(map[string]scheduledTask),
 		executors:  make(map[string]executor.Executor),
 		mux:        sync.Mutex{},
-		readyTasks: queue.NewDelayQueue[execution](),
+		readyTasks: queue.NewDelayQueue[execution](10),
 		taskEvents: make(chan task.Event),
 	}
 
@@ -54,10 +54,13 @@ func (sche *Scheduler) Start(ctx context.Context) error {
 						taskEvents: make(chan task.Event),
 					}
 					sche.mux.Lock()
-					sche.readyTasks.Add(execution{
+					err := sche.readyTasks.Enqueue(ctx, execution{
 						scheduledTask: &st,
 						time:          event.Task.Next(time.Now()),
 					})
+					if err != nil {
+						log.Println("插入延迟队列失败, err=", err.Error())
+					}
 				}
 			default:
 				// 其他类型暂时不支持
@@ -68,7 +71,16 @@ func (sche *Scheduler) Start(ctx context.Context) error {
 
 func (sche *Scheduler) executeLoop(ctx context.Context) error {
 	for {
-		t, _ := sche.readyTasks.Take() // 如果没有任务这里会阻塞
+		t, err := sche.readyTasks.Dequeue(ctx) // 如果没有任务这里会阻塞
+		if err != nil {
+			log.Println("获取任务失败, err=", err.Error())
+		}
+		select {
+		// 检测 ctx 有没有过期
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 		go func(exec execution) {
 			delay := exec.task.MaxTime
 			execCtx, cancel := context.WithTimeout(context.Background(), delay)
