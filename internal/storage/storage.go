@@ -27,6 +27,7 @@ type TaskInfo struct {
 	Cron            string
 	Type            string
 	InstanceId      int32
+	NextTime        int64
 	MaxExecTime     int32
 	Config          string
 	CreateTime      int64
@@ -154,12 +155,13 @@ func (dao *TaskInfoStorage) Preempt(ctx context.Context) {
 	defer tickerP.Stop()
 	for {
 		select {
-		case <-tickerP.C:
+		case now := <-tickerP.C:
 			go func() {
 				tasks, err := dao.preempted(ctx)
 				if err != nil {
 					log.Printf("preempted error: %v", err) // 这里要报警
 				}
+				log.Printf("%s preempted tasks = %d\n", now, len(tasks))
 				for _, item := range tasks {
 					// 通知调度器
 					preemptedEvent := Event{
@@ -189,12 +191,12 @@ func (dao *TaskInfoStorage) preempted(ctx context.Context) ([]TaskInfo, error) {
 	var tmp []TaskInfo
 	// GORM 多条件查询
 	// 条件1: 下一次执行时间小于当前时间，并且状态是等待中
-	cond1 := db.Where("next_time <= ? AND status = ?", now, TaskStatusWaiting)
+	cond1 := db.Where("next_time <= ? AND scheduler_status = ?", now.UnixMilli(), TaskStatusWaiting)
 	// 条件2: 状态是运行态 (某一次续约失败，utime没有变)
 	// 10分钟内没有抢到, 认为任务已经过期
 	const threshold = 10 * time.Minute
 	ddl := now.Add(-1 * threshold).UnixMilli()
-	cond2 := db.Where("utime <= ? AND status = ?", ddl, TaskStatusRunning)
+	cond2 := db.Where("update_time <= ? AND scheduler_status = ?", ddl, TaskStatusRunning)
 
 	err := db.Model(&TaskInfo{}).
 		Where(cond1.Or(cond2)).
@@ -208,9 +210,9 @@ func (dao *TaskInfoStorage) preempted(ctx context.Context) ([]TaskInfo, error) {
 		res := db.Model(&TaskInfo{}).
 			Where("id = ? AND version = ?", item.Id, item.Version).
 			Updates(map[string]any{
-				"utime":   now.UnixMilli(),
-				"version": item.Version + 1,
-				"status":  TaskStatusRunning,
+				"update_time":      now.UnixMilli(),
+				"version":          item.Version + 1,
+				"scheduler_status": TaskStatusRunning,
 			})
 		if res.Error != nil {
 			continue // 数据库错误, 记录日志, 继续下一个
@@ -233,7 +235,7 @@ func (dao *TaskInfoStorage) AutoRefresh(ctx context.Context) {
 		case <-timer.C:
 			var tasks []TaskInfo
 			err := dao.db.WithContext(ctx).Model(&TaskInfo{}).
-				Where("SchedulerStatus = ? AND instance_id = ?",
+				Where("scheduler_status = ? AND instance_id = ?",
 					EventTypePreempted, dao.instanceId).
 				Find(&tasks).Error
 			if err != nil {
@@ -254,7 +256,7 @@ func (dao *TaskInfoStorage) refresh(ctx context.Context, id int64) {
 	now := time.Now().UnixMilli()
 	err := dao.db.WithContext(ctx).Model(&TaskInfo{}).
 		Where("id=?", id).Updates(map[string]any{
-		"utime": now,
+		"update_time": now,
 	}).Error
 	if err != nil {
 		log.Printf("cron: storage[%d]自动续约失败，%v", dao.instanceId, err)
@@ -295,8 +297,9 @@ func (dao *TaskInfoStorage) toTask(info TaskInfo) *task.Task {
 			Type:    info.Type,
 			MaxTime: time.Duration(info.MaxExecTime),
 		},
-		TaskId:  info.Id,
-		Version: info.Version,
+		NextTime: time.UnixMilli(info.NextTime),
+		TaskId:   info.Id,
+		Version:  info.Version,
 	}
 }
 
@@ -304,6 +307,7 @@ func (dao *TaskInfoStorage) toTaskInfo(t *task.Task) *TaskInfo {
 	return &TaskInfo{
 		Name:        t.Name,
 		Version:     t.Version,
+		NextTime:    t.NextTime.UnixMilli(),
 		Cron:        t.Cron,
 		Type:        t.Cron,
 		MaxExecTime: int32(t.MaxTime.Seconds()),
