@@ -3,6 +3,7 @@ package schedule
 import (
 	"context"
 	"github.com/alehua/cron-center/internal/executor"
+	"github.com/alehua/cron-center/internal/executor/local"
 	"github.com/alehua/cron-center/internal/storage"
 	"github.com/alehua/cron-center/internal/task"
 	"github.com/ecodeclub/ekit/queue"
@@ -21,7 +22,9 @@ func NewScheduler(s storage.Storager) *Scheduler {
 		taskEvents: make(chan task.Event),
 	}
 
-	sche.executors = map[string]executor.Executor{}
+	sche.executors = map[string]executor.Executor{
+		"local": local.NewLocalFuncExecutor(),
+	}
 
 	return sche
 }
