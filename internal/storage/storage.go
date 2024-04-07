@@ -47,7 +47,7 @@ type TaskInfoStorage struct {
 	db              *gorm.DB
 	refreshInterval time.Duration // 续约间隔
 	preemptInterval time.Duration // 抢占间隔
-	instanceId      int32
+	instanceId      string
 	limit           int
 	events          chan Event
 	stop            chan struct{}
@@ -55,7 +55,7 @@ type TaskInfoStorage struct {
 
 type Option func(t *TaskInfoStorage)
 
-func NewTaskStorage(db *gorm.DB, id int32, opts ...Option) Storager {
+func NewTaskStorage(db *gorm.DB, id string, opts ...Option) Storager {
 	dao := &TaskInfoStorage{
 		db:              db,
 		instanceId:      id,

@@ -10,7 +10,8 @@ create table if not EXISTS `task_info`
     type              varchar(32)   not null comment '任务类型',
     config            text          not null comment '执行配置',
     version           int default 0 not null comment '任务调度版本',
-    instance_id       int           not null comment '实例ID'
+    instance_id       string        not null comment '实例ID'
+    max_exec_time     int32         not null comment '任务最大运行时间/秒'
     create_time       bigint        not null,
     update_time       bigint        not null
     )
