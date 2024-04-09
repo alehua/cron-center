@@ -19,6 +19,7 @@ const (
 	Stop = "stop"
 )
 
+//go:generate mockgen -source=types.go -package=storagemocks -destination=mocks/types.mock.go Storager
 type Storager interface {
 	Events(ctx context.Context, taskEvents <-chan task.Event) <-chan Event
 	TaskDAO
