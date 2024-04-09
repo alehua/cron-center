@@ -36,7 +36,7 @@ func (task *Task) Next(t time.Time) time.Time {
 		cron.Hour | cron.Dom |
 		cron.Month | cron.Dow |
 		cron.Descriptor)
-	s, _ := expr.Parse(task.Cron)
+	s, _ := expr.Parse(task.Config.Cron)
 	return s.Next(t)
 }
 

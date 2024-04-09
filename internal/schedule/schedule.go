@@ -99,3 +99,14 @@ func (sche *Scheduler) executeLoop(ctx context.Context) error {
 		}(t)
 	}
 }
+
+func (sche *Scheduler) AddTasks(ctx context.Context, tasks ...*task.Task) error {
+	for _, t := range tasks {
+		t.NextTime = t.Next(time.Now())
+		err := sche.storage.Insert(ctx, t)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}

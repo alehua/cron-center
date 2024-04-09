@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"log"
 	"time"
 
@@ -22,14 +23,13 @@ const (
 type TaskInfo struct {
 	Id              int64 `gorm:"auto_increment,primary_key"`
 	Name            string
-	SchedulerStatus string
+	SchedulerStatus int
 	Version         int64
 	Cron            string
 	Type            string
 	InstanceId      int32
 	NextTime        int64
 	MaxExecTime     int32
-	Config          string
 	CreateTime      int64
 	UpdateTime      int64
 }
@@ -145,8 +145,14 @@ func (dao *TaskInfoStorage) Insert(ctx context.Context, t *task.Task) error {
 	now := time.Now().UnixMilli()
 	info.CreateTime = now
 	info.UpdateTime = now
-	info.SchedulerStatus = EventTypeCreated
-	return dao.db.WithContext(ctx).Create(&info).Error
+	info.SchedulerStatus = TaskStatusWaiting
+	// 这里存在多个实例共同添加的情况, 所以这里应该是upsert语意
+	// return dao.db.WithContext(ctx).Create(&info).Error
+	return dao.db.WithContext(ctx).Clauses(clause.OnConflict{
+		DoUpdates: clause.Assignments(map[string]any{
+			"update_time": now,
+		}),
+	}).Create(&info).Error
 }
 
 func (dao *TaskInfoStorage) Preempt(ctx context.Context) {
@@ -211,7 +217,7 @@ func (dao *TaskInfoStorage) preempted(ctx context.Context) ([]TaskInfo, error) {
 			Where("id = ? AND version = ?", item.Id, item.Version).
 			Updates(map[string]any{
 				"update_time":      now.UnixMilli(),
-				"version":          item.Version + 1,
+				"version":          gorm.Expr("`version`+1"),
 				"scheduler_status": TaskStatusRunning,
 			})
 		if res.Error != nil {
@@ -255,11 +261,11 @@ func (dao *TaskInfoStorage) AutoRefresh(ctx context.Context) {
 func (dao *TaskInfoStorage) refresh(ctx context.Context, id int64) {
 	now := time.Now().UnixMilli()
 	err := dao.db.WithContext(ctx).Model(&TaskInfo{}).
-		Where("id=?", id).Updates(map[string]any{
+		Where("id = ?", id).Updates(map[string]any{
 		"update_time": now,
 	}).Error
 	if err != nil {
-		log.Printf("cron: storage[%d]自动续约失败，%v", dao.instanceId, err)
+		log.Printf("cron: storage[%s]自动续约失败，%v", dao.instanceId, err)
 	}
 	// 根据error判断是否需要重新重试
 }
@@ -268,8 +274,8 @@ func (dao *TaskInfoStorage) Release(ctx context.Context, id int64) error {
 	// 释放是的时候判断是否自己抢占的, 确保更新时间和自己强制时候一致
 	res := dao.db.WithContext(ctx).Model(&TaskInfo{}).
 		Where("id = ? AND instance_id = ?", id, dao.instanceId).Updates(map[string]any{
-		"status": TaskStatusEnd,
-		"utime":  time.Now().UnixMilli(),
+		"scheduler_status": TaskStatusWaiting,
+		"update_time":      time.Now().UnixMilli(),
 	})
 	if res.RowsAffected == 0 {
 		// 任务已经不是自己的, 无须释放。 理论上是不会出现这种情况
@@ -308,8 +314,8 @@ func (dao *TaskInfoStorage) toTaskInfo(t *task.Task) *TaskInfo {
 		Name:        t.Name,
 		Version:     t.Version,
 		NextTime:    t.NextTime.UnixMilli(),
-		Cron:        t.Cron,
-		Type:        t.Cron,
+		Cron:        t.Config.Cron,
+		Type:        t.Config.Type,
 		MaxExecTime: int32(t.MaxTime.Seconds()),
 	}
 }

@@ -8,15 +8,9 @@ import (
 const (
 	// EventTypePreempted 抢占了一个任务
 	EventTypePreempted = "preempted"
-	// EventTypeDeleted 某一个任务被删除了
-	EventTypeDeleted = "deleted"
-	EventTypeCreated = "created"
-	EventTypeRunning = "running"
-	EventTypeSuccess = "success"
-	EventTypeFail    = "fail"
-	EventTypeEnd     = "end"
-
-	Stop = "stop"
+	EventTypeRunning   = "running"
+	EventTypeSuccess   = "success"
+	EventTypeFail      = "fail"
 )
 
 //go:generate mockgen -source=types.go -package=storagemocks -destination=mocks/types.mock.go Storager
