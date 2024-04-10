@@ -173,6 +173,7 @@ func (dao *TaskInfoStorage) Preempt(ctx context.Context) {
 					preemptedEvent := Event{
 						Type: EventTypePreempted,
 						Task: &task.Task{
+							NextTime: time.UnixMilli(item.NextTime),
 							Config: task.Config{Name: item.Name, Cron: item.Cron,
 								Type: item.Type, MaxTime: time.Duration(item.MaxExecTime)},
 							TaskId: item.Id,

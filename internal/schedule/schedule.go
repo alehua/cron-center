@@ -46,7 +46,6 @@ func (sche *Scheduler) Start(ctx context.Context) error {
 		case event := <-events:
 			switch event.Type {
 			case storage.EventTypePreempted:
-				// t := sche.newRunningTask(ctx, event.Task, sc.executors[string(event.Task.Type)])
 				if exec, exist := sche.executors[event.Task.Type]; !exist {
 					log.Println("任务执行类型不存在")
 				} else {
@@ -56,7 +55,7 @@ func (sche *Scheduler) Start(ctx context.Context) error {
 						// expr:       time.Since(event.Task.Next(time.Now())),
 						taskEvents: make(chan task.Event),
 					}
-					sche.mux.Lock()
+					// 添加到等待队列
 					err := sche.readyTasks.Enqueue(ctx, execution{
 						scheduledTask: &st,
 						time:          event.Task.Next(time.Now()),
