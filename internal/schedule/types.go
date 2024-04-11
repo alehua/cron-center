@@ -12,7 +12,7 @@ import (
 type Scheduler struct {
 	storage    storage.Storager
 	tasks      map[string]scheduledTask
-	executors  map[string]executor.Executor
+	executors  executor.Executor
 	mux        sync.Mutex
 	readyTasks *queue.DelayQueue[execution]
 	taskEvents chan task.Event

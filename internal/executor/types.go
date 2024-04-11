@@ -18,4 +18,5 @@ const (
 type Executor interface {
 	Name() string
 	Exec(ctx context.Context, j task.Task) error
+	AddLocalFunc(name string, fn func(ctx context.Context) error)
 }

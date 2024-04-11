@@ -1,4 +1,4 @@
-package boost
+package ioc
 
 import (
 	"github.com/alehua/cron-center/internal/pkg/logger"

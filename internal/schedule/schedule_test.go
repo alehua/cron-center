@@ -2,7 +2,7 @@ package schedule
 
 import (
 	"context"
-	"github.com/alehua/cron-center/internal/executor/local"
+	"github.com/alehua/cron-center/internal/executor"
 	"github.com/alehua/cron-center/internal/storage"
 	storagemocks "github.com/alehua/cron-center/internal/storage/mocks"
 	"github.com/alehua/cron-center/internal/task"
@@ -23,7 +23,7 @@ func TestExecuteLoop(t *testing.T) {
 
 	execTask := &scheduledTask{
 		task:       &task.Task{},
-		executor:   local.NewLocalFuncExecutor(),
+		executor:   executor.NewLocalFuncExecutor(),
 		taskEvents: make(chan task.Event),
 	}
 	sche := NewScheduler(st)

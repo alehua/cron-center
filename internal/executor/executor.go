@@ -1,10 +1,10 @@
-package local
+package executor
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/alehua/cron-center/internal/executor"
+	"github.com/alehua/cron-center/internal/ioc/demo"
 	"github.com/alehua/cron-center/internal/task"
 )
 
@@ -12,12 +12,12 @@ type FuncExecutor struct {
 	funcs map[string]func(ctx context.Context) error
 }
 
-func NewLocalFuncExecutor() executor.Executor {
+func NewLocalFuncExecutor() Executor {
 	exec := &FuncExecutor{
 		funcs: make(map[string]func(ctx context.Context) error),
 	}
 	// 在这里添加任务
-	exec.AddLocalFunc("demo", Demo)
+	exec.AddLocalFunc("demo", demo.Demo)
 	return exec
 }
 

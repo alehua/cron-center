@@ -26,7 +26,6 @@ type TaskInfo struct {
 	SchedulerStatus int
 	Version         int64
 	Cron            string
-	Type            string
 	InstanceId      int32
 	NextTime        int64
 	MaxExecTime     int32
@@ -175,7 +174,7 @@ func (dao *TaskInfoStorage) Preempt(ctx context.Context) {
 						Task: &task.Task{
 							NextTime: time.UnixMilli(item.NextTime),
 							Config: task.Config{Name: item.Name, Cron: item.Cron,
-								Type: item.Type, MaxTime: time.Duration(item.MaxExecTime)},
+								MaxTime: time.Duration(item.MaxExecTime)},
 							TaskId: item.Id,
 						},
 					}
@@ -301,7 +300,6 @@ func (dao *TaskInfoStorage) toTask(info TaskInfo) *task.Task {
 		Config: task.Config{
 			Name:    info.Name,
 			Cron:    info.Cron,
-			Type:    info.Type,
 			MaxTime: time.Duration(info.MaxExecTime),
 		},
 		NextTime: time.UnixMilli(info.NextTime),
@@ -316,7 +314,6 @@ func (dao *TaskInfoStorage) toTaskInfo(t *task.Task) *TaskInfo {
 		Version:     t.Version,
 		NextTime:    t.NextTime.UnixMilli(),
 		Cron:        t.Config.Cron,
-		Type:        t.Config.Type,
 		MaxExecTime: int32(t.MaxTime.Seconds()),
 	}
 }

@@ -1,30 +1,17 @@
-package boost
+package ioc
 
 import (
-	"context"
 	"github.com/alehua/cron-center/internal/schedule"
 	"github.com/alehua/cron-center/internal/storage"
-	"log"
 	"net"
 )
 
-func WithStart(ctx context.Context) error {
+func Schedule() *schedule.Scheduler {
 	l := InitLogger()
 	db := InitDB(l)
 	instantId := getOutboundIP() // 计算本级IP作为实例的ID
-	st := storage.NewTaskStorage(db, instantId,
-		storage.WithRefreshLimit(10))
-
-	sche := schedule.NewScheduler(st)
-
-	num := register(ctx, sche)
-	log.Printf("添加任务个数=%d\n", num)
-
-	// 启动抢占和续约
-	go st.Preempt(ctx)
-	go st.AutoRefresh(ctx)
-
-	return sche.Start(ctx)
+	st := storage.NewTaskStorage(db, instantId, storage.WithRefreshLimit(10))
+	return schedule.NewScheduler(st)
 }
 
 // getOutboundIP 获得对外发送消息的 IP 地址

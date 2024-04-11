@@ -17,7 +17,6 @@ const (
 type Config struct {
 	Name    string
 	Cron    string
-	Type    string
 	MaxTime time.Duration // 任务的最大执行时间
 }
 
